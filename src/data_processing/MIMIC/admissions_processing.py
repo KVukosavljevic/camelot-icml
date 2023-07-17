@@ -107,6 +107,8 @@ def main():
 
     # Print Information
     print("\n\n ======= PROCESSING MIMIC ADMISSIONS ======= \n\n")
+    
+    #import pdb; pdb.set_trace()
 
     # Hospital Core
     patients_core = pd.read_csv(DEFAULT_CONFIG["DATA_FD"] + "core/patients.csv",
@@ -119,10 +121,21 @@ def main():
                                 index_col=None, header=0, low_memory=False, parse_dates=["intime", "outtime"])
     triage_ed = pd.read_csv(DEFAULT_CONFIG["DATA_FD"] + "ed/triage.csv", index_col=None, header=0, low_memory=False)
 
+    ###
+    """
+    1776    10086553 # outtime next day, not noted
+    1783    10086893 # same
+    29865   11458820 # same
+    81614   13987916 # same
+    """
+    ###
+
     """
     Step 1: Extract relevant information from admission core data.
         a) For each patient, consider only the first observed ED admission (based on in-time). If there are multiple
         admissions with the same intime, keep the admission with the latest out-time.
+    """
+
     """
 
     # Assertion checks for duplicates and missing values
@@ -149,8 +162,12 @@ def main():
     print("=", end="\r")    
 
     """
+
+    """
     Step 2: Subset based on ward data:
         a) Remove admissions where the first ward is not the Emergency Department.
+    """
+
     """
 
     # Within the list of transfers, subset to list of above patients, and identify the first ward for each patient.
@@ -183,6 +200,8 @@ def main():
     admissions_ed_S2.to_csv(DEFAULT_CONFIG["SAVE_FD"] + "admissions_S2.csv", index=True, header=True)
 
     """
+
+    """
     Step 3: We look at eventual patient hospital transfers.
         a) For each patient, consider all admissions after ED (defined as intime > ED intime)
         b) Identify patients without further admissions;
@@ -190,6 +209,7 @@ def main():
         d) Remove patients satisfying (b) and (c) from the list of patients.
     """
 
+    """
     # Compute list of second or later ward transfers for our patients
     admissible_transfers_post_ED = (
         transfers_core
@@ -235,12 +255,36 @@ def main():
     print("===", end="\r")
 
     """
+
+    """
     Step 4: 
         Feature Extraction - Derive age and ESI. Convert DoD to datetime. Convert gender to 1 (M) or 0 (F).
         Cohort Selection based on age (above admissable threshold) and ESI (2, 3, 4) - missing not allowed.
         Remove mismatches between admission times (intime, outtime, intime_next, outtime_next) <= deattime.
         Removing features that are not needed.
     """
+
+    # Load from interim 
+
+    admissions_ed_S3 =  pd.read_csv(DEFAULT_CONFIG["DATA_FD"] + "interim/admissions_S3.csv",
+                                index_col=None, header=0, low_memory=False)
+    
+    # Custom add - gender problem
+    idxs = []
+    for i in range(len(admissions_ed_S3)):
+        if admissions_ed_S3.iloc[i]['gender_x'] != admissions_ed_S3.iloc[i]['gender_y']:
+            print(admissions_ed_S3.iloc[i])
+            idxs.append(i)
+
+    admissions_ed_S3 = admissions_ed_S3.drop(idxs)
+
+    admissions_ed_S3 = admissions_ed_S3.rename(columns={'gender_x' : 'gender'})
+    admissions_ed_S3 = admissions_ed_S3.drop('gender_y', axis='columns')
+
+    
+    # Custom add end
+
+    import pdb; pdb.set_trace()
 
     # Feature Processing
     admissions_ed_S4 = (

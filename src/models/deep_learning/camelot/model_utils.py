@@ -154,7 +154,7 @@ def l_pat_dist(clusters_prob):
     """
 
     # Compute Entropy
-    entropy = - tf.reduce_sum(clusters_prob * tf_log(clusters_prob))
+    entropy = - tf.reduce_sum(clusters_prob * tf_log(clusters_prob), axis=-1) 
 
     # Compute negative entropy
     batch_loss = tf.reduce_mean(entropy)
@@ -182,7 +182,6 @@ def l_dist(y_pred, true_dist):
     batch_loss = tf.reduce_sum(pred_dist * _log_divide)
 
     return batch_loss
-
 
 # --------------- CALLBACK METHODS ----------------------
 "Callback methods to update training procedure."

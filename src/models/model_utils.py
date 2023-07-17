@@ -8,6 +8,8 @@ Created on Sun Nov 21 10:48:57 2021
 
 # Import Models
 from src.models.deep_learning.camelot.model import Model as CamelotModel
+from src.models.deep_learning.camelot.model_st import Model as CamelotModelSt
+from src.models.deep_learning.camelot.model_ens import Model as CamelotModelEns
 from src.models.deep_learning.actpc.model import Model as ActpcModel
 from src.models.deep_learning.enc_pred.model import Model as EncPredModel
 from src.models.traditional_classifiers.svm_all import SVMAll
@@ -38,17 +40,78 @@ def get_model_from_str(data_info: dict, model_config: dict, training_config: dic
     """
     model_name = model_config["model_name"]
     gpu = training_config["gpu"] if "gpu" in training_config.keys() else None
-
+    
     # Load the corresponding model
-    if "camelot" in model_name.lower():
+    if "camelot_static" in model_name.lower():
+        print("True for st")
+        # Check if GPU is accessible
+        if gpu is None or gpu == 0:
 
+            # Train only on CPU
+            os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+            model = CamelotModelSt(data_info=data_info, model_config=model_config, training_config=training_config)
+
+        # If GPU usage
+        else:
+
+            # Identify physical devices and limit memory growth
+            physical_devices = tf.config.list_physical_devices('GPU')[0]
+            print("\nPhysical Devices for Computation: ", physical_devices, sep="\n")
+            tf.config.experimental.set_memory_growth(physical_devices, True)
+
+            # If distributed strategy
+            if gpu == "strategy":
+
+                # Load strategy
+                strategy = tf.distribute.MirroredStrategy(devices=None)
+
+                with strategy.scope():
+                    model = CamelotModelSt(data_info=data_info, model_config=model_config,
+                                         training_config=training_config)
+
+            else:
+                model = CamelotModelSt(data_info=data_info, model_config=model_config, training_config=training_config)
+    
+    # Ensemble Methods
+    elif "camelot_ensemble" in model_name.lower():
+        print("True camelot ens")
+        # Check if GPU is accessible
+        if gpu is None or gpu == 0:
+
+            # Train only on CPU
+            os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+            model = CamelotModelEns(data_info=data_info, model_config=model_config, training_config=training_config)
+
+        # If GPU usage
+        else:
+
+            # Identify physical devices and limit memory growth
+            physical_devices = tf.config.list_physical_devices('GPU')[0]
+            print("\nPhysical Devices for Computation: ", physical_devices, sep="\n")
+            tf.config.experimental.set_memory_growth(physical_devices, True)
+
+            # If distributed strategy
+            if gpu == "strategy":
+
+                # Load strategy
+                strategy = tf.distribute.MirroredStrategy(devices=None)
+
+                with strategy.scope():
+                    model = CamelotModelEns(data_info=data_info, model_config=model_config,
+                                         training_config=training_config)
+
+            else:
+                model = CamelotModelEns(data_info=data_info, model_config=model_config, training_config=training_config)
+
+    elif "camelot" in model_name.lower():
+        print("True it is camelot")
         # Check if GPU is accessible
         if gpu is None or gpu == 0:
 
             # Train only on CPU
             os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
             model = CamelotModel(data_info=data_info, model_config=model_config, training_config=training_config)
-
+            print(model)
         # If GPU usage
         else:
 
@@ -149,8 +212,9 @@ def get_model_from_str(data_info: dict, model_config: dict, training_config: dic
 
     elif "news" in model_name.lower():
         model = NEWS(data_info=data_info, **model_config)
-
     else:
         raise ValueError(f"Correct Model name not specified. Value {model_name} given.")
+
+    print(model)
 
     return model

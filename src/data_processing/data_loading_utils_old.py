@@ -19,11 +19,11 @@ HAVEN_BIOCHEM = ['ALB', 'CR', 'CRP', 'POT', 'SOD', 'UR']
 HAVEN_STATIC = ['age', 'gender', 'is_elec', 'is_surg']
 HAVEN_OUTCOME_NAMES = ['Healthy', 'Death', 'ICU', 'Card']
 
-MIMIC_PARSE_TIME_VARS = ["intime", "outtime"]
-MIMIC_PARSE_TD_VARS = ["sampled_time_to_end"]
+MIMIC_PARSE_TIME_VARS = ["intime", "outtime", "chartmax"]
+MIMIC_PARSE_TD_VARS = ["sampled_time_to_end(1H)", "time_to_end", "time_to_end_min", "time_to_end_max"]
 MIMIC_VITALS = ["TEMP", "HR", "RR", "SPO2", "SBP", "DBP"]
 MIMIC_STATIC = ["age", "gender", "ESI"]
-MIMIC_OUTCOME_NAMES = ["Death", "ICU", "Ward", "Discharge"]
+MIMIC_OUTCOME_NAMES = ["De" ,"I", "W", "Di"]
 
 MAIN_ID_LIST = ["subject_id", "hadm_id", "stay_id", "patient_id", "pat_id"]  # Identifiers for main ids.
 
@@ -148,12 +148,12 @@ def _numpy_forward_fill(array):
     # Add time indices where not masked, and propagate forward
     inter_array = np.where(~ array_mask, np.arange(array_mask.shape[1]).reshape(1, -1, 1), 0)
     np.maximum.accumulate(inter_array, axis=1,
-                        out=inter_array)  # For each (n, t, d) missing value, get the previously accessible mask value
+                          out=inter_array)  # For each (n, t, d) missing value, get the previously accessible mask value
 
     # Index matching for output. For n, d sample as previously, use inter_array for previous time id
     array_out = array_out[np.arange(array_out.shape[0])[:, None, None],
-                        inter_array,
-                        np.arange(array_out.shape[-1])[None, None, :]]
+                          inter_array,
+                          np.arange(array_out.shape[-1])[None, None, :]]
 
     return array_out
 
@@ -167,8 +167,8 @@ def _numpy_backward_fill(array):
     inter_array = np.where(~ array_mask, np.arange(array_mask.shape[1]).reshape(1, -1, 1), array_mask.shape[1] - 1)
     inter_array = np.minimum.accumulate(inter_array[:, ::-1], axis=1)[:, ::-1]
     array_out = array_out[np.arange(array_out.shape[0])[:, None, None],
-                        inter_array,
-                        np.arange(array_out.shape[-1])[None, None, :]]
+                          inter_array,
+                          np.arange(array_out.shape[-1])[None, None, :]]
 
     return array_out
 
@@ -205,7 +205,7 @@ def _load(data_name, window=4):
 
         # Load Data
         X = pd.read_csv(data_fd + "vitals_process.csv", parse_dates=MIMIC_PARSE_TIME_VARS, header=0, index_col=0)
-        y = pd.read_csv(data_fd + f"outcomes_{window}_process.csv", index_col=0)
+        y = pd.read_csv(data_fd + f"outcomes_{window}h_process.csv", index_col=0)
 
         # Convert columns to timedelta
         X = convert_to_timedelta(X, *MIMIC_PARSE_TD_VARS)
@@ -256,7 +256,7 @@ def get_ids(data_name):
         id_col, time_col, needs_time_to_end = "subject_id", "charttime", True
 
     elif "MIMIC" in data_name:
-        id_col, time_col, needs_time_to_end = "stay_id", "sampled_time_to_end", False
+        id_col, time_col, needs_time_to_end = "hadm_id", "sampled_time_to_end(1H)", False
 
     elif "SAMPLE" in data_name:
         id_col, time_col, needs_time_to_end = None, None, None
@@ -373,7 +373,7 @@ class DataProcessor:
 
     def load(self):
         """Load Dataset according to given parameters."""
-        #import pdb; pdb.set_trace()
+
         # Load data
         data = _load(self.dataset_name, window=self.target_window)
 
@@ -450,7 +450,7 @@ class DataProcessor:
     def _check_correct_time_conversion(self, X):
         """Check addition and truncation of time index worked accordingly."""
 
-        cond1 = X[self.id_col].is_monotonic_increasing
+        cond1 = X[self.id_col].is_monotonic
         cond2 = X.groupby(self.id_col).apply(lambda x: x["time_to_end"].is_monotonic_decreasing).all()
 
         min_time, max_time = self.time_range

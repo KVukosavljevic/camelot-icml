@@ -1,12 +1,12 @@
 { 
-   "model_name": "camelot",
-   "num_clusters": 10,
+   "model_name": "camelot_ensemble",
+   "num_clusters": 20,
    "latent_dim": 64,
-   "seed": 1111,
-   "name": "ABL1",
-   "alpha_1": 0.0,
+   "seed": 1001,
+   "name": "LL_exp",
+   "alpha_1": 0.1,
    "alpha_2": 0.1,
-   "alpha_3": 0.0,
+   "alpha_3": 0.1,
    "beta": 0.1,
    "regulariser_params": [
       0.01,
@@ -23,6 +23,14 @@
    },
    "predictor_params": {
       "hidden_layers": 2,
+      "hidden_nodes": 30
+   },
+   "linearlayer_params": {
+      "hidden_layers": 0,
+      "hidden_nodes": 30
+   },
+   "staticlayer_params": {
+      "hidden_layers": 1,
       "hidden_nodes": 30
    }
 }

@@ -195,6 +195,8 @@ class FeatTimeAttention(Layer):
         """Build method for the layer given input shape."""
         N, T, Df = input_shape
 
+        print(f"N {N}, T {T}, Df {Df}")
+
         # kernel, bias for feature -> latent space conversion
         self.kernel = self.add_weight("kernel", shape=[1, 1, Df, self.units], initializer="glorot_uniform",
                                       trainable=True)
@@ -416,6 +418,403 @@ class AttentionRNNEncoder(LSTMEncoder):
 
     def __init__(self, units, activation="linear", **kwargs):
         super().__init__(latent_dim=units, return_sequences=True, **kwargs)
+        self.feat_time_attention_layer = FeatTimeAttention(units=units, activation=activation)
+
+    def call(self, x, mask=None, training: bool = True, **kwargs):
+        """
+        Forward pass of layer block.
+
+        Params:
+        - x: array-like of shape (bs, T, D_f)
+        - mask: array-like of shape (bs, T) (default = None)
+        - training: bool indicating whether to make computation in training mode or not. (default = True)
+
+        Returns:
+        - z: array-like of shape (bs, units)
+        """
+
+        # Compute LSTM output states
+        latent_reps = super().call(x, mask=mask, training=training, **kwargs)
+
+        # Compute representation through feature time attention layer
+        attention_inputs = (x, latent_reps)
+        z = self.feat_time_attention_layer(attention_inputs)
+
+        return z
+
+    def compute_unnorm_scores(self, x, cluster_reps=None):
+        """
+        Compute unnormalised scores alpha, beta, gamma given input data and cluster representation vectors.
+
+        Params:
+        - x: array-like of shape (bs, T, D_f)
+        - cluster_reps: array-like of shape (K, units) of cluster representation vectors. (default = None)
+
+        If cluster_reps is None, compute only alpha and beta weights.
+
+        Returns:
+        - Tuple of arrays, containing alpha, beta, gamma unnormalised attention weights.
+        """
+        latent_reps = super().call(x, training=False)
+
+        return self.feat_time_attention_layer.compute_unnorm_scores(x, latent_reps, cluster_reps)
+
+    def compute_norm_scores(self, inputs, cluster_reps=None):
+        """Compute normalised scores alpha, beta, gamma given input data and cluster representation vectors.
+
+        Params:
+        - inputs: array-like of shape (bs, T, D_f)
+        - cluster_reps: array-like of shape (K, units) of cluster representation vectors. (default = None)
+
+        If cluster_reps is None, compute only alpha and beta weights.
+
+        Returns:
+        - Tuple of arrays, containing alpha, beta, gamma normalised attention weights.
+        """
+        latent_reps = super().call(inputs, training=False)
+
+        return self.feat_time_attention_layer.compute_norm_scores(inputs, latent_reps, cluster_reps)
+
+    def get_config(self):
+        """Update configuration for layer."""
+        config = super().get_config().copy()
+
+        # Update
+        custom_layer_config = self.feat_time_attention_layer.get_config().copy()
+        config = {**custom_layer_config, **config}
+
+        return config
+
+class AttentionRNNEncoder(LSTMEncoder):
+    """
+        Class for an Attention RNN Encoder architecture. Class builds on LSTM Encoder class.
+    """
+
+    def __init__(self, units, activation="linear", **kwargs):
+        super().__init__(latent_dim=units, return_sequences=True, **kwargs)
+        self.feat_time_attention_layer = FeatTimeAttention(units=units, activation=activation)
+
+    def call(self, x, mask=None, training: bool = True, **kwargs):
+        """
+        Forward pass of layer block.
+
+        Params:
+        - x: array-like of shape (bs, T, D_f)
+        - mask: array-like of shape (bs, T) (default = None)
+        - training: bool indicating whether to make computation in training mode or not. (default = True)
+
+        Returns:
+        - z: array-like of shape (bs, units)
+        """
+
+        # Compute LSTM output states
+        latent_reps = super().call(x, mask=mask, training=training, **kwargs)
+
+        # Compute representation through feature time attention layer
+        attention_inputs = (x, latent_reps)
+        z = self.feat_time_attention_layer(attention_inputs)
+
+        return z
+
+    def compute_unnorm_scores(self, x, cluster_reps=None):
+        """
+        Compute unnormalised scores alpha, beta, gamma given input data and cluster representation vectors.
+
+        Params:
+        - x: array-like of shape (bs, T, D_f)
+        - cluster_reps: array-like of shape (K, units) of cluster representation vectors. (default = None)
+
+        If cluster_reps is None, compute only alpha and beta weights.
+
+        Returns:
+        - Tuple of arrays, containing alpha, beta, gamma unnormalised attention weights.
+        """
+        latent_reps = super().call(x, training=False)
+
+        return self.feat_time_attention_layer.compute_unnorm_scores(x, latent_reps, cluster_reps)
+
+    def compute_norm_scores(self, inputs, cluster_reps=None):
+        """Compute normalised scores alpha, beta, gamma given input data and cluster representation vectors.
+
+        Params:
+        - inputs: array-like of shape (bs, T, D_f)
+        - cluster_reps: array-like of shape (K, units) of cluster representation vectors. (default = None)
+
+        If cluster_reps is None, compute only alpha and beta weights.
+
+        Returns:
+        - Tuple of arrays, containing alpha, beta, gamma normalised attention weights.
+        """
+        latent_reps = super().call(inputs, training=False)
+
+        return self.feat_time_attention_layer.compute_norm_scores(inputs, latent_reps, cluster_reps)
+
+    def get_config(self):
+        """Update configuration for layer."""
+        config = super().get_config().copy()
+
+        # Update
+        custom_layer_config = self.feat_time_attention_layer.get_config().copy()
+        config = {**custom_layer_config, **config}
+
+        return config
+    
+############# Modified blocks ######################
+
+class FeatTimeAttentionMod(Layer):
+    """
+    Custom Feature Attention Layer. Features are projected to latent dimension and approximate output RNN states.
+    Approximations are sum-weighted to obtain a final representation.
+
+    Params:
+    units: int, dimensionality of projection/latent space.
+    activation: str/fn, the activation function to use. (default = "relu")
+    name: str, the name on which to save the layer. (default = "custom_att_layer")
+    """
+
+    def __init__(self, units: int, activation: str = "linear", name: str = "custom_layer"):
+
+        # Load layer params
+        super().__init__(name=name)
+
+        # Initialise key layer attributes
+        self.units = units
+        self.activation_name = activation
+        self.activation = tf.keras.activations.get(activation)  # get activation from  identifier
+
+        # Initialise layer weights to None
+        self.kernel = None
+        self.bias = None
+        self.unnorm_beta_weights = None
+
+    def build(self, input_shape=None):
+        """Build method for the layer given input shape."""
+        N, T, Df = input_shape
+
+        # kernel, bias for feature -> latent space conversion
+        self.kernel = self.add_weight("kernel", shape=[1, 1, Df, self.units], initializer="glorot_uniform",
+                                      trainable=True)
+        self.bias = self.add_weight("bias", shape=[1, 1, Df, self.units], initializer='uniform', trainable=True)
+
+        # Time aggregation learn weights
+        self.unnorm_beta_weights = self.add_weight(name='time_agg', shape=[1, T, 1],
+                                                   initializer="uniform", trainable=True)
+
+        super().build(input_shape)
+
+    def call(self, inputs, **kwargs):
+        """
+        Forward pass of the Custom layer - requires inputs and estimated latent projections.
+
+        Params:
+        - inputs: tuple of two arrays:
+            - x: array-like of input data of shape (bs, T, D_f)
+            - latent_reps: array-like of representations of shape (bs, T, units)
+
+        returns:
+        - latent_representation (z): array-like of shape (bs, units)
+        """
+
+        # Unpack input
+        x, latent_reps, z_static = inputs
+
+        # Compute output state approximations
+        o_hat, _ = self.compute_o_hat_and_alpha(x, latent_reps)
+
+        # Add z static to o_hat (bs, T, units)
+        z_static_rep = tf.expand_dims(tf.expand_dims(tf.squeeze(z_static), axis=1), axis=2)
+        z_static_rep = tf.tile(z_static_rep, [1, o_hat.shape[1], o_hat.shape[2]])
+
+        o_hat = o_hat + z_static_rep
+
+        # Normalise temporal weights and sum-weight approximations to obtain representation
+        beta_scores = _norm_abs(self.unnorm_beta_weights)
+        z = tf.reduce_sum(tf.math.multiply(o_hat, beta_scores), axis=1)
+
+        return z
+
+    def compute_o_hat_and_alpha(self, x, latent_reps):
+        """
+        Compute approximation to latent representations, given input feature data.
+
+        Params:
+        - x: array-like of shape (bs, T, D_f)
+        - latent_reps: array-like of shape (bs, T, units)
+
+        returns:
+        - output: tuple of arrays:
+           - array-like of shape (bs, T, units) of representation approximations
+           - array-like of shape (bs, T, D_f) of alpha_weights
+        """
+
+        # Compute feature projections
+        feature_projections = self.activation(tf.math.multiply(tf.expand_dims(x, axis=-1), self.kernel) + self.bias)
+
+        # estimate alpha coefficients through OLS
+        alpha_t = _estimate_alpha(feature_projections, targets=latent_reps)
+
+        # sum-weight feature projections according to alpha_t to compute latent approximations
+        o_hat = tf.reduce_sum(tf.math.multiply(tf.expand_dims(alpha_t, axis=-1), feature_projections), axis=2)
+
+        return o_hat, alpha_t
+
+    def compute_unnorm_scores(self, inputs, latent_reps, cluster_reps=None):
+        """
+        Compute unnormalised weights for attention values.
+
+        Params:
+        - inputs: array-like of shape (bs, T, D_f) of input data
+        - latent_reps: array-like of shape (bs, T, units) of RNN cell output states.
+        - cluster_reps: array-like of shape (K, units) of cluster representation vectors (default = None). If None,
+        gamma computation is skipped.
+
+        Returns:
+            - output: tuple of arrays (alpha, beta, gamma) with corresponding values. If cluster_reps is None,
+        gamma computation is skipped.
+        """
+
+        # Compute alpha weights
+        o_hat, alpha_t = self.compute_o_hat_and_alpha(inputs, latent_reps)
+
+        # Load beta weights
+        beta = self.unnorm_beta_weights
+
+        # If cluster_reps not None, compute gamma
+        if cluster_reps is None:
+            gamma_t_k = None
+        else:
+            gamma_t_k = _estimate_gamma(o_hat, cluster_reps)
+
+        return alpha_t, beta, gamma_t_k
+
+    def compute_norm_scores(self, x, latent_reps, cluster_reps=None):
+        """
+        Compute normalised attention scores alpha, beta, gamma.
+
+        Params:
+        - x: array-like of shape (bs, T, D_f) of input data
+        - latent_reps: array-like of shape (bs, T, units) of RNN cell output states.
+        - cluster_reps: array-like of shape (K, units) of cluster representation vectors (default = None). If None,
+        gamma computation is skipped.
+
+        Returns:
+            - output: tuple of arrays (alpha, beta, gamma) with corresponding normalised scores. If cluster_reps
+        is None, gamma computation is skipped.
+        """
+
+        # Load unnormalised scores
+        alpha, beta, gamma = self.compute_unnorm_scores(x, latent_reps, cluster_reps)
+
+        # Normalise
+        alpha_norm = _norm_abs(alpha, axis=1)
+        beta_norm = _norm_abs(beta, axis=1)
+
+        if gamma is None:
+            gamma_norm = None
+        else:
+            gamma_norm = _norm_abs(gamma, axis=1)
+
+        return alpha_norm, beta_norm, gamma_norm
+
+    def get_config(self):
+        """Update configuration for layer."""
+
+        # Load existing configuration
+        config = super().get_config().copy()
+
+        # Update configuration
+        config.update({f"{self.name}-units": self.units,
+                       f"{self.name}-activation": self.activation_name})
+
+        return config
+
+class AttentionRNNEncoderMod(LSTMEncoder):
+    """
+        Class for an Attention RNN Encoder architecture. Class builds on LSTM Encoder class.
+    """
+
+    def __init__(self, units, activation="linear", **kwargs):
+        super().__init__(latent_dim=units, return_sequences=True, **kwargs)
+        self.feat_time_attention_layer = FeatTimeAttentionMod(units=units, activation=activation)
+
+    def call(self, x, mask=None, training: bool = True, **kwargs):
+        """
+        Forward pass of layer block.
+
+        Params:
+        - x: array-like of shape (bs, T, D_f)
+        - mask: array-like of shape (bs, T) (default = None)
+        - training: bool indicating whether to make computation in training mode or not. (default = True)
+
+        Returns:
+        - z: array-like of shape (bs, units)
+        """
+
+        
+
+        z_dynamic, z_static = x
+
+        # Compute LSTM output states
+        latent_reps = super().call(z_dynamic, mask=mask, training=training, **kwargs)
+
+        # Compute representation through feature time attention layer
+        attention_inputs = (z_dynamic, latent_reps, z_static)
+        z = self.feat_time_attention_layer(attention_inputs)
+
+        return z
+
+    def compute_unnorm_scores(self, x, cluster_reps=None):
+        """
+        Compute unnormalised scores alpha, beta, gamma given input data and cluster representation vectors.
+
+        Params:
+        - x: array-like of shape (bs, T, D_f)
+        - cluster_reps: array-like of shape (K, units) of cluster representation vectors. (default = None)
+
+        If cluster_reps is None, compute only alpha and beta weights.
+
+        Returns:
+        - Tuple of arrays, containing alpha, beta, gamma unnormalised attention weights.
+        """
+        latent_reps = super().call(x, training=False)
+
+        return self.feat_time_attention_layer.compute_unnorm_scores(x, latent_reps, cluster_reps)
+
+    def compute_norm_scores(self, inputs, cluster_reps=None):
+        """Compute normalised scores alpha, beta, gamma given input data and cluster representation vectors.
+
+        Params:
+        - inputs: array-like of shape (bs, T, D_f)
+        - cluster_reps: array-like of shape (K, units) of cluster representation vectors. (default = None)
+
+        If cluster_reps is None, compute only alpha and beta weights.
+
+        Returns:
+        - Tuple of arrays, containing alpha, beta, gamma normalised attention weights.
+        """
+        latent_reps = super().call(inputs, training=False)
+
+        return self.feat_time_attention_layer.compute_norm_scores(inputs, latent_reps, cluster_reps)
+
+    def get_config(self):
+        """Update configuration for layer."""
+        config = super().get_config().copy()
+
+        # Update
+        custom_layer_config = self.feat_time_attention_layer.get_config().copy()
+        config = {**custom_layer_config, **config}
+
+        return config
+
+class StaticRNNEncoder(LSTMEncoder):
+    """
+        Class for an Static RNN Encoder architecture. Class builds on LSTM Encoder class.
+    """
+
+    def __init__(self, units, activation="linear", **kwargs):
+        super().__init__(latent_dim=units, return_sequences=True, **kwargs)
+
+        # Don't need this
         self.feat_time_attention_layer = FeatTimeAttention(units=units, activation=activation)
 
     def call(self, x, mask=None, training: bool = True, **kwargs):

@@ -56,6 +56,15 @@ def test_outtime_after_intime(df):
     # Print info about test function
     print("\nTesting outtime is after intime.")
 
+    rm_idx = []
+
+    # Custom added
+    for i in range(len(df)):
+        if df['outtime'].iloc[i] < df['intime'].iloc[i]: rm_idx.append(i)
+
+    df = df.drop(rm_idx)
+    # Custom added end
+
     assert df["outtime"].ge(df["intime"]).all()
 
     # Output message

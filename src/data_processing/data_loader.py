@@ -54,6 +54,8 @@ def data_loader(data_name: str = "MIMIC", feat_set: Union[List, str] = "vit", ti
     X_val = data_processor.apply_normalisation(X_val)
     X_test = data_processor.apply_normalisation(X_test)
 
+    print(X_train)
+
     # Get min and max factors.
     min_, max_ = data_processor.min, data_processor.max
 
