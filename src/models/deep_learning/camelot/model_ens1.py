@@ -18,7 +18,7 @@ import json
 from typing import Union
 
 import src.models.deep_learning.camelot.model_utils as model_utils
-from src.models.deep_learning.model_blocks import MLP, AttentionRNNEncoder, LSTMEncoder
+from src.models.deep_learning.model_blocks import MLP, AttentionRNNEncoder, LSTMEncoder, StaticRNNEncoder
 
 
 class CAMELOT(tf.keras.Model):
@@ -69,7 +69,7 @@ class CAMELOT(tf.keras.Model):
 
     def __init__(self, num_clusters=10, latent_dim=32, seed=4347, output_dim=4, name="CAMELOT",
                  alpha_1=0.01, alpha_2=0.01, alpha_3=0.01, beta=0.01, regulariser_params=(0.01, 0.01), dropout=0.6,
-                 encoder_params=None, identifier_params=None, predictor_params=None):
+                 encoder_params=None, identifier_params=None, predictor_params=None, linearlayer_params=None, staticlayer_params=None):
 
         super().__init__(name=name)
 
@@ -78,6 +78,10 @@ class CAMELOT(tf.keras.Model):
         self.latent_dim = latent_dim
         self.output_dim = output_dim
         self.seed = seed
+
+        # Dynamic vs static feature weights
+        self.dynamic_w = 0.5
+        self.static_w = 1 - self.dynamic_w
 
         # Loss function params
         self.alpha_1 = alpha_1
@@ -93,13 +97,24 @@ class CAMELOT(tf.keras.Model):
         self.encoder_params = encoder_params if encoder_params is not None else {}
         self.identifier_params = identifier_params if identifier_params is not None else {}
         self.predictor_params = predictor_params if predictor_params is not None else {}
+        self.linearlayer_params = linearlayer_params if linearlayer_params is not None else {}
+        self.staticlayer_params = staticlayer_params if staticlayer_params is not None else {}
 
-        self.Encoder = AttentionRNNEncoder(units=self.latent_dim, dropout=self.dropout,
+        # Time-varying feats
+        self.Encoder = AttentionRNNEncoder(units=self.latent_dim - 3, dropout=self.dropout,
                                            regulariser_params=self.regulariser, name="Encoder",
                                            **self.encoder_params)
-        # self.Encoder = LSTMEncoder(latent_dim=self.latent_dim, dropout=self.dropout,
-        #                             regulariser_params=self.regulariser, name="Encoder",
-        #                             **self.encoder_params)
+        # Static feats
+        self.StaticLayer = MLP(output_dim=1, dropout=self.dropout, output_fn="softmax",
+                              regulariser_params=self.regulariser, seed=self.seed, name="LinearLayer_Encoder",
+                              **self.staticlayer_params)
+        
+        # Combination
+        self.LinearLayer = MLP(output_dim=self.latent_dim, dropout=self.dropout, output_fn="softmax",
+                              regulariser_params=self.regulariser, seed=self.seed, name="LinearLayer_Encoder",
+                              **self.linearlayer_params)
+        
+        # Next
         self.Identifier = MLP(output_dim=self.K, dropout=self.dropout, output_fn="softmax",
                               regulariser_params=self.regulariser, seed=self.seed, name="Identifier",
                               **self.identifier_params)
@@ -119,8 +134,13 @@ class CAMELOT(tf.keras.Model):
     # Build and Call Methods
     def build(self, input_shape):
         """Build method to serialise layers."""
-        self.Encoder.build(input_shape)
-        self.Encoder.feat_time_attention_layer.build(input_shape)
+        # Input shape for dynamic
+        all_data_shape = np.array(input_shape)
+        dyn_data_shape = (input_shape[0], input_shape[1], input_shape[2] - 4)
+        print(f"Shape {all_data_shape}")
+        
+        self.Encoder.build(dyn_data_shape)
+        self.Encoder.feat_time_attention_layer.build(dyn_data_shape)
 
         super().build(input_shape)
 
@@ -152,8 +172,8 @@ class CAMELOT(tf.keras.Model):
             - y_pred: array-like of shape (bs, outcome_dim) with probability assignments.
             - pi: array-like of shape (bs, K) of cluster probability assignments.
         """
+        z = self.encoder_forward_pass(inputs)
 
-        z = self.Encoder(inputs)
         pi = self.Identifier(z)
 
         # Sample from cluster assignments and assign corresponding cluster representations
@@ -161,6 +181,27 @@ class CAMELOT(tf.keras.Model):
         y_pred = tf.linalg.matmul(pi, clus_phens)
 
         return y_pred, pi
+    
+    def encoder_forward_pass(self, inputs):
+        # Ids of static vs dynamic vars | can be changed to specific names
+    
+        static_idxs = [20, 21, 22, 23]
+        dynamic_idxs = list(range(19))
+
+        inputs_static = tf.gather(inputs[:,0,:], static_idxs, axis=1)
+        inputs_dynamic = tf.gather(inputs, dynamic_idxs, axis=2)
+
+        # Dynamic features
+        z1 = self.Encoder(inputs_dynamic)
+
+        # Static features
+        z2 = self.StaticLayer(inputs_static)
+    
+        # Combining here
+        z = tf.concat((z1, z2), axis = 1)
+        z = self.LinearLayer(z) 
+
+        return z
 
     def _sample_from_probs(self, clus_probs):
         """
@@ -362,6 +403,7 @@ class CAMELOT(tf.keras.Model):
 
         # Iterate through epochs and batches
         print("-" * 20, "\n", "Initialising encoder-predictor training.")
+
         for epoch in range(epochs):
 
             epoch_loss, step_ = 0, 0
@@ -370,8 +412,11 @@ class CAMELOT(tf.keras.Model):
                 with tf.GradientTape(watch_accessed_variables=False) as tape:
                     tape.watch(enc_pred_vars)
 
-                    # Prediction and loss
-                    y_pred = self.Predictor(self.Encoder(x_batch))
+                    # Prediction
+                    z = self.encoder_forward_pass(x_batch)
+                    y_pred = self.Predictor(z)
+
+                    # Loss
                     loss_batch = model_utils.l_crit(y_batch, y_pred)
 
                 # Update gradients
@@ -390,8 +435,9 @@ class CAMELOT(tf.keras.Model):
             # Compute validation loss on validation data
             val_loss, val_step_ = 0, 0
             for val_step_, (x_val, y_val) in enumerate(val_dataset):
-                # Get forward pass
-                y_val_pred = self.Predictor(self.Encoder(x_val))
+                # Prediction and loss
+                z = self.encoder_forward_pass(x_val)
+                y_val_pred = self.Predictor(z)
                 loss_val_batch = model_utils.l_crit(y_val, y_val_pred)
 
                 # Update loss
@@ -427,20 +473,25 @@ class CAMELOT(tf.keras.Model):
 
         # Compute Latent Projections
         print("-" * 20, "\n", "Initialising cluster representations.")
-        z = self.Encoder(x).numpy()
-        y_pred = self.Predictor(self.Encoder(x)).numpy()
+
+        z = self.encoder_forward_pass(x)
+        y_pred = self.Predictor(z).numpy()
+        z = z.numpy()
 
         # Fit KMeans
         km = KMeans(n_clusters=self.K, init="k-means++", random_state=self.seed, **kwargs)
-        # km.fit(y_pred)
+        # while some clusters empty then rerun & tweak
+        #km.fit(y_pred)
         km.fit(z)
         print("KMeans fit has completed.")
 
+        # Look at tremoving the NAN clusters
+
         # Make predictions and get predicted centers
-        # cluster_pred = km.predict(y_pred)
+        #cluster_pred = km.predict(y_pred)
         cluster_pred = km.predict(z)
         _one_hot_clus_assign = np.eye(self.K)[cluster_pred]
-
+        
         # Compute average of cluster assignments
         centers = np.matmul(np.transpose(_one_hot_clus_assign), z) / np.sum(_one_hot_clus_assign, axis=0).reshape(-1, 1)
 
@@ -453,9 +504,9 @@ class CAMELOT(tf.keras.Model):
         clus_train_y = np.eye(self.K)[cluster_pred]
 
         # Make predictions on validation data
-        #y_pred = self.Predictor(self.Encoder(x)).numpy()
-        z_val = self.Encoder(val_x).numpy()
-        clus_val_y = np.eye(self.K)[km.predict(z_val)]
+        z_val = self.encoder_forward_pass(val_x)
+        #y_val = self.Predictor(z_val).numpy()
+        clus_val_y = np.eye(self.K)[km.predict(z_val.numpy())]
 
         return clus_train_y.astype(np.float32), clus_val_y.astype(np.float32)
 
@@ -501,7 +552,8 @@ class CAMELOT(tf.keras.Model):
                     tape.watch(iden_vars)
 
                     # Prediction and loss
-                    clus_pred = self.Identifier(self.Encoder(x_batch))
+                    z = self.encoder_forward_pass(x_batch)
+                    clus_pred = self.Identifier(z)
                     loss_batch = model_utils.l_crit(clus_batch, clus_pred)
 
                 # Update gradients
@@ -521,13 +573,14 @@ class CAMELOT(tf.keras.Model):
             val_loss, val_step_ = 0, 0
             for val_step_, (x_val, clus_val) in enumerate(val_dataset):
                 # Get forward pass
-                clus_pred = self.Identifier(self.Encoder(x_val))
+                z = self.encoder_forward_pass(x_val)
+                clus_pred = self.Identifier(z)
                 loss_val_batch = model_utils.l_crit(clus_val, clus_pred)
 
                 # Update loss
                 val_loss += loss_val_batch
 
-            # Get average over data
+            # Get average ovper data
             val_loss = val_loss / val_step_
 
             # Print result and update tracker
@@ -589,7 +642,9 @@ class CAMELOT(tf.keras.Model):
         Returns:
         - clus_pred: array-like of shape (bs, ) with corresponding cluster assignment.
             """
-        pi = self.Identifier(self.Encoder(x)).numpy()
+        # Prediction
+        z = self.encoder_forward_pass(x)
+        pi = self.Identifier(z).numpy()
         clus_pred = np.argmax(pi, axis=1)
 
         return clus_pred
@@ -599,7 +654,9 @@ class CAMELOT(tf.keras.Model):
 
     def compute_pis(self, x):
         """Obtain cluster assignment probabilities."""
-        pis = self.Identifier(self.Encoder(x))
+        # Forward pass
+        z = self.encoder_forward_pass(x)
+        pis = self.Identifier(z)
 
         return pis.numpy()
 
@@ -630,7 +687,7 @@ class CAMELOT(tf.keras.Model):
 CAMELOT_INPUT_PARAMS = ["num_clusters", "latent_dim", "seed", "output_dim", "name", "alpha_1", "alpha_2", "alpha_3",
                         "beta",
                         "regulariser_params", "dropout", "encoder_params", "identifier_params",
-                        "predictor_params"]
+                        "predictor_params", "linearlayer_params", "staticlayer_params"]
 
 
 class Model(CAMELOT):
@@ -801,7 +858,10 @@ class Model(CAMELOT):
         # Other useful definitions
         K = self.K
         cluster_names = list(range(1, K + 1))
-        output_test = self.Predictor(self.Encoder(X_test)).numpy()
+
+        # Prediction
+        z = self.encoder_forward_pass(X_test)
+        output_test = self.Predictor(z).numpy()
 
         # Firstly, compute predicted y estimates
         y_pred = pd.DataFrame(output_test, index=pat_ids, columns=outc_dims)

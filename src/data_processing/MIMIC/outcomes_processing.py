@@ -140,6 +140,7 @@ def compute_outcomes_from_events(df: pd.DataFrame, time_window: pd.Timedelta):
             axis=1
         )
     )
+    # need to edit this
 
     # Check outcome is well-defined (i.e. the above returns exactly one outcome)
     assert outcomes.isin(["Death", "ICU", "Discharge", "Ward"]).all()

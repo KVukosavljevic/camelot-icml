@@ -1,10 +1,10 @@
 {
-   "data_name": "MIMIC",
-   "target_window": 48,
-   "feat_set": "vit-sta",
+   "data_name": "HAVEN",
+   "target_window": 12,
+   "feat_set": "vit-sta-lab",
    "time_range": [
-      0,
-      10
+      24,
+      72
    ],
    "train_test_ratio": 0.6,
    "train_val_ratio": 0.4,

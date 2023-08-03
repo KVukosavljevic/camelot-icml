@@ -1,13 +1,13 @@
 { 
-   "model_name": "camelot_ensemble",
-   "num_clusters": 20,
+   "model_name": "camelot",
+   "num_clusters": 7,
    "latent_dim": 64,
    "seed": 1001,
-   "name": "LL_exp",
-   "alpha_1": 0.1,
-   "alpha_2": 0.1,
-   "alpha_3": 0.1,
-   "beta": 0.1,
+   "name": "tuning",
+   "alpha_1": 0.001,
+   "alpha_2": 0,
+   "alpha_3": 0,
+   "beta": 0.01,
    "regulariser_params": [
       0.01,
       0.01

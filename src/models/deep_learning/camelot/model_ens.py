@@ -487,15 +487,15 @@ class CAMELOT(tf.keras.Model):
         # Fit KMeans
         km = KMeans(n_clusters=self.K, init="k-means++", random_state=self.seed, **kwargs)
         # while some clusters empty then rerun & tweak
-        km.fit(y_pred)
-        #km.fit(z)
+        #km.fit(y_pred)
+        km.fit(z)
         print("KMeans fit has completed.")
 
         # Look at tremoving the NAN clusters
 
         # Make predictions and get predicted centers
-        cluster_pred = km.predict(y_pred)
-        #cluster_pred = km.predict(z)
+        #cluster_pred = km.predict(y_pred)
+        cluster_pred = km.predict(z)
         _one_hot_clus_assign = np.eye(self.K)[cluster_pred]
         
         # Compute average of cluster assignments
@@ -510,9 +510,9 @@ class CAMELOT(tf.keras.Model):
         clus_train_y = np.eye(self.K)[cluster_pred]
 
         # Make predictions on validation data
-        z = self.encoder_forward_pass(val_x)
-        y_val = self.Predictor(z).numpy()
-        clus_val_y = np.eye(self.K)[km.predict(y_val)]
+        z_val = self.encoder_forward_pass(val_x)
+        #y_val = self.Predictor(z_val).numpy()
+        clus_val_y = np.eye(self.K)[km.predict(z_val.numpy())]
 
         return clus_train_y.astype(np.float32), clus_val_y.astype(np.float32)
 
@@ -896,6 +896,7 @@ class Model(CAMELOT):
 
         # ----------------------------- Save Output Data --------------------------------
         # Useful objects
+        # Add to save the layer weights
         y_pred.to_csv(save_fd + "y_pred.csv", index=True, header=True)
         outc_pred.to_csv(save_fd + "outc_pred.csv", index=True, header=True)
         y_true.to_csv(save_fd + "y_true.csv", index=True, header=True)
