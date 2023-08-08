@@ -587,13 +587,20 @@ class FeatTimeAttentionMod(Layer):
         self.bias = None
         self.unnorm_beta_weights = None
 
+        self.lldropout = 0.6
+        self.llregulariser = (0.01, 0.01)
+        self.llseed = 4347
+        
+        llstaticlayer_params = None
+        self.llstaticlayer_params = llstaticlayer_params if llstaticlayer_params is not None else {}
+
         # Static feats
-        self.StaticLayer = MLP(output_dim=1, dropout=self.dropout, output_fn="softmax",
-                              regulariser_params=self.regulariser, seed=self.seed, name="LinearLayer_Encoder",
-                              **self.staticlayer_params)
+        self.StaticLayer = MLP(output_dim=1, dropout=self.lldropout, output_fn="softmax",
+                              regulariser_params=self.llregulariser, seed=self.llseed, name="LinearLayer_Encoder",
+                              **self.llstaticlayer_params)
 
 
-    def build(self, input_shape=None):
+    def build(self, input_shape=None, dropout=None, regulariser=None, seed=None, params=None):
         """Build method for the layer given input shape."""
         N, T, Df = input_shape
 
@@ -605,6 +612,11 @@ class FeatTimeAttentionMod(Layer):
         # Time aggregation learn weights
         self.unnorm_beta_weights = self.add_weight(name='time_agg', shape=[1, T, 1],
                                                    initializer="uniform", trainable=True)
+
+        self.lldropout = dropout
+        self.llregulariser = regulariser
+        self.llseed=seed
+        self.llstaticlayer_params = params
 
         super().build(input_shape)
 

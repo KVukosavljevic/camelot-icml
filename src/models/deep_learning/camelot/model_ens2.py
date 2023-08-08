@@ -100,7 +100,7 @@ class CAMELOT(tf.keras.Model):
         self.staticlayer_params = staticlayer_params if staticlayer_params is not None else {}
 
         # Time-varying feats
-        self.Encoder = AttentionRNNEncoder(units=self.latent_dim - 3, dropout=self.dropout,
+        self.Encoder = AttentionRNNEncoder(units=self.latent_dim - 1, dropout=self.dropout,
                                            regulariser_params=self.regulariser, name="Encoder",
                                            **self.encoder_params)
         # Static feats
@@ -136,12 +136,15 @@ class CAMELOT(tf.keras.Model):
         # Input shape for dynamic
         all_data_shape = np.array(input_shape)
         dyn_data_shape = (input_shape[0], input_shape[1], input_shape[2] - 4)
+
+        dyn_data_shape = (input_shape[0], input_shape[1], 20)
+        all_data_shape = (input_shape[0], input_shape[1], 24)
         print(f"Shape {all_data_shape}")
         
         self.Encoder.build(dyn_data_shape)
         self.Encoder.feat_time_attention_layer.build(dyn_data_shape)
 
-        super().build(input_shape)
+        super().build(all_data_shape)
 
     def call(self, inputs, **kwargs):
         """
@@ -185,20 +188,24 @@ class CAMELOT(tf.keras.Model):
         # Ids of static vs dynamic vars | can be changed to specific names
     
         static_idxs = [20, 21, 22, 23]
-        dynamic_idxs = list(range(19))
+        dynamic_idxs = list(range(20))
+
+        #static_idxs = [5, 6, 7, 8]
+        #dynamic_idxs = list(range(5))
 
         inputs_static = tf.gather(inputs[:,0,:], static_idxs, axis=1)
         inputs_dynamic = tf.gather(inputs, dynamic_idxs, axis=2)
+        #inputs_dynamic = tf.concat([inputs_dynamic, inputs_dynamic, inputs_dynamic, inputs_dynamic], axis=2)
 
         # Dynamic features
         z1 = self.Encoder(inputs_dynamic) # 61 unit output
-
+        
         # Static features
         z2 = self.StaticLayer(inputs_static)
-    
+        
         # Combining here
         z = tf.concat((z1, z2), axis = 1)
-
+        
         return z
 
     def _sample_from_probs(self, clus_probs):
