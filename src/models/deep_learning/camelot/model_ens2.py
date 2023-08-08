@@ -18,8 +18,7 @@ import json
 from typing import Union
 
 import src.models.deep_learning.camelot.model_utils as model_utils
-from src.models.deep_learning.model_blocks import MLP, AttentionRNNEncoder, LSTMEncoder, StaticRNNEncoder
-
+from src.models.deep_learning.model_blocks import MLP, AttentionRNNEncoder
 
 class CAMELOT(tf.keras.Model):
     """

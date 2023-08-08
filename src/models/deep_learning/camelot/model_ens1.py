@@ -18,8 +18,7 @@ import json
 from typing import Union
 
 import src.models.deep_learning.camelot.model_utils as model_utils
-from src.models.deep_learning.model_blocks import MLP, AttentionRNNEncoder, LSTMEncoder, StaticRNNEncoder
-
+from src.models.deep_learning.model_blocks import MLP, AttentionRNNEncoder
 
 class CAMELOT(tf.keras.Model):
     """
@@ -137,12 +136,18 @@ class CAMELOT(tf.keras.Model):
         # Input shape for dynamic
         all_data_shape = np.array(input_shape)
         dyn_data_shape = (input_shape[0], input_shape[1], input_shape[2] - 4)
+        
+        
+        dyn_data_shape = (input_shape[0], input_shape[1], 20)
+        all_data_shape = (input_shape[0], input_shape[1], 24)
+
         print(f"Shape {all_data_shape}")
+        print(f"Shape {dyn_data_shape}")
         
         self.Encoder.build(dyn_data_shape)
         self.Encoder.feat_time_attention_layer.build(dyn_data_shape)
 
-        super().build(input_shape)
+        super().build(all_data_shape)
 
     def call(self, inputs, **kwargs):
         """
@@ -186,10 +191,14 @@ class CAMELOT(tf.keras.Model):
         # Ids of static vs dynamic vars | can be changed to specific names
     
         static_idxs = [20, 21, 22, 23]
-        dynamic_idxs = list(range(19))
+        dynamic_idxs = list(range(20))
+
+        #static_idxs = [5, 6, 7, 8]
+        #dynamic_idxs = list(range(5))
 
         inputs_static = tf.gather(inputs[:,0,:], static_idxs, axis=1)
         inputs_dynamic = tf.gather(inputs, dynamic_idxs, axis=2)
+        #inputs_dynamic = tf.concat([inputs_dynamic, inputs_dynamic, inputs_dynamic, inputs_dynamic], axis=2)
 
         # Dynamic features
         z1 = self.Encoder(inputs_dynamic)

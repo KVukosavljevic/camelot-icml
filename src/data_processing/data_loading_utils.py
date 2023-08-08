@@ -281,7 +281,6 @@ def _get_outcome_names(data_name):
 
 def _check_input_format(X, y):
     """Check conditions to confirm model input."""
-
     try:
         # Length and shape conditions
         cond1 = X.shape[0] == y.shape[0]
@@ -373,7 +372,7 @@ class DataProcessor:
 
     def load(self):
         """Load Dataset according to given parameters."""
-        #import pdb; pdb.set_trace()
+
         # Load data
         data = _load(self.dataset_name, window=self.target_window)
 
