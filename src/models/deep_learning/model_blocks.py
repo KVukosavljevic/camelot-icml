@@ -854,12 +854,19 @@ class FeatTimeAttentionMod1(Layer):
         self.bias = None
         self.unnorm_beta_weights = None
 
-        # Static feats
-        self.StaticLayer = MLP(output_dim=1, dropout=self.dropout, output_fn="softmax",
-                              regulariser_params=self.regulariser, seed=self.seed, name="LinearLayer_Encoder",
-                              **self.staticlayer_params)
+        self.lldropout = 0.6
+        self.llregulariser = (0.01, 0.01)
+        self.llseed = 4347
+        
+        llstaticlayer_params = None
+        self.llstaticlayer_params = llstaticlayer_params if llstaticlayer_params is not None else {}
 
-    def build(self, input_shape=None):
+        # Static feats
+        self.StaticLayer = MLP(output_dim=1, dropout=self.lldropout, output_fn="softmax",
+                              regulariser_params=self.llregulariser, seed=self.llseed, name="LinearLayer_Encoder",
+                              **self.llstaticlayer_params)
+
+    def build(self, input_shape=None, dropout=None, regulariser=None, seed=None, params=None):
         """Build method for the layer given input shape."""
         N, T, Df = input_shape
 
@@ -871,6 +878,11 @@ class FeatTimeAttentionMod1(Layer):
         # Time aggregation learn weights
         self.unnorm_beta_weights = self.add_weight(name='time_agg', shape=[1, T, 1],
                                                    initializer="uniform", trainable=True)
+        
+        self.lldropout = dropout
+        self.llregulariser = regulariser
+        self.llseed=seed
+        self.llstaticlayer_params = params
 
         super().build(input_shape)
 
@@ -896,8 +908,11 @@ class FeatTimeAttentionMod1(Layer):
         # Double check z_static dims
         z_static = self.StaticLayer(z_static)
 
+        z_static_rep = tf.expand_dims(tf.expand_dims(tf.squeeze(z_static), axis=1), axis=2)
+        z_static_rep = tf.tile(z_static_rep, [1, o_hat.shape[1], 1])
+
         # Option 2: concat
-        o_hat = tf.concat((o_hat, z_static), axis = 1)
+        o_hat = tf.concat((o_hat, z_static_rep), axis = 2)
 
         # Normalise temporal weights and sum-weight approximations to obtain representation
         beta_scores = _norm_abs(self.unnorm_beta_weights)
@@ -1007,7 +1022,7 @@ class AttentionRNNEncoderMod1(LSTMEncoder):
 
     def __init__(self, units, activation="linear", **kwargs):
         super().__init__(latent_dim=units, return_sequences=True, **kwargs)
-        self.feat_time_attention_layer = FeatTimeAttentionMod(units=units, activation=activation)
+        self.feat_time_attention_layer = FeatTimeAttentionMod1(units=units, activation=activation)
 
     def call(self, x, mask=None, training: bool = True, **kwargs):
         """
