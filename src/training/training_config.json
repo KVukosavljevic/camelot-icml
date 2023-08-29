@@ -1,9 +1,9 @@
 {
    "lr_init": 0.002,
    "lr": 0.001,
-   "epochs_init_1": 2,
-   "epochs_init_2": 2,
-   "epochs": 5,
+   "epochs_init_1": 1,
+   "epochs_init_2": 1,
+   "epochs": 1,
    "bs": 64,
    "cbck_str": "",
    "patience_epochs": 200,

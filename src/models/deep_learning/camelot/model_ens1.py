@@ -193,12 +193,12 @@ class CAMELOT(tf.keras.Model):
         static_idxs = [20, 21, 22, 23]
         dynamic_idxs = list(range(20))
 
-        static_idxs = [5, 6, 7, 8]
-        dynamic_idxs = list(range(5))
+        #static_idxs = [5, 6, 7, 8]
+        #dynamic_idxs = list(range(5))
 
         inputs_static = tf.gather(inputs[:,0,:], static_idxs, axis=1)
         inputs_dynamic = tf.gather(inputs, dynamic_idxs, axis=2)
-        inputs_dynamic = tf.concat([inputs_dynamic, inputs_dynamic, inputs_dynamic, inputs_dynamic], axis=2)
+        #inputs_dynamic = tf.concat([inputs_dynamic, inputs_dynamic, inputs_dynamic, inputs_dynamic], axis=2)
 
         # Dynamic features
         z1 = self.Encoder(inputs_dynamic)

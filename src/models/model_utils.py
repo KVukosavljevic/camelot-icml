@@ -13,6 +13,7 @@ from src.models.deep_learning.camelot.model_ens1 import Model as CamelotModelEns
 from src.models.deep_learning.camelot.model_ens2 import Model as CamelotModelEns2
 from src.models.deep_learning.camelot.model_ens3 import Model as CamelotModelEns3
 from src.models.deep_learning.camelot.model_ens4 import Model as CamelotModelEns4
+from src.models.deep_learning.camelot.model_ens5 import Model as CamelotModelEns5
 from src.models.deep_learning.actpc.model import Model as ActpcModel
 from src.models.deep_learning.enc_pred.model import Model as EncPredModel
 from src.models.traditional_classifiers.svm_all import SVMAll
@@ -195,6 +196,36 @@ def get_model_from_str(data_info: dict, model_config: dict, training_config: dic
 
             else:
                 model = CamelotModelEns4(data_info=data_info, model_config=model_config, training_config=training_config)
+
+    elif "camelot_ens5" in model_name.lower():
+        print("True camelot ens 5")
+        # Check if GPU is accessible
+        if gpu is None or gpu == 0:
+
+            # Train only on CPU
+            os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+            model = CamelotModelEns5(data_info=data_info, model_config=model_config, training_config=training_config)
+
+        # If GPU usage
+        else:
+
+            # Identify physical devices and limit memory growth
+            physical_devices = tf.config.list_physical_devices('GPU')[0]
+            print("\nPhysical Devices for Computation: ", physical_devices, sep="\n")
+            tf.config.experimental.set_memory_growth(physical_devices, True)
+
+            # If distributed strategy
+            if gpu == "strategy":
+
+                # Load strategy
+                strategy = tf.distribute.MirroredStrategy(devices=None)
+
+                with strategy.scope():
+                    model = CamelotModelEns5(data_info=data_info, model_config=model_config,
+                                         training_config=training_config)
+
+            else:
+                model = CamelotModelEns5(data_info=data_info, model_config=model_config, training_config=training_config)
 
     elif "camelot" in model_name.lower():
         print("True it is camelot")

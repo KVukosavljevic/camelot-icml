@@ -863,7 +863,7 @@ class FeatTimeAttentionMod1(Layer):
 
         # Static feats
         self.StaticLayer = MLP(output_dim=1, dropout=self.lldropout, output_fn="softmax",
-                              regulariser_params=self.llregulariser, seed=self.llseed, name="LinearLayer_Encoder",
+                              regulariser_params=self.llregulariser, seed=self.llseed, name="LSTM_StaticLayer_Encoder",
                               **self.llstaticlayer_params)
 
     def build(self, input_shape=None, dropout=None, regulariser=None, seed=None, params=None):
@@ -1061,7 +1061,11 @@ class AttentionRNNEncoderMod1(LSTMEncoder):
         Returns:
         - Tuple of arrays, containing alpha, beta, gamma unnormalised attention weights.
         """
-        latent_reps = super().call(x, training=False)
+        z_dynamic, z_static = x
+
+        latent_reps = super().call(z_dynamic, training=False)
+
+        attention_inputs = (z_dynamic, latent_reps, z_static)
 
         return self.feat_time_attention_layer.compute_unnorm_scores(x, latent_reps, cluster_reps)
 

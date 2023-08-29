@@ -1,5 +1,5 @@
 { 
-   "model_name": "camelot_ens4",
+   "model_name": "camelot_ens5",
    "num_clusters": 7,
    "latent_dim": 64,
    "seed": 1001,

@@ -179,7 +179,7 @@ class CAMELOT(tf.keras.Model):
         # Ids of static vs dynamic vars | can be changed to specific names
     
         static_idxs = [20, 21, 22, 23]
-        dynamic_idxs = list(range(19))
+        dynamic_idxs = list(range(20))
 
         #static_idxs = [5, 6, 7, 8]
         #dynamic_idxs = list(range(5))
